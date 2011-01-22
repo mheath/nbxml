@@ -1,0 +1,7 @@
+<root>
+	<test>Test 1</test>
+	<test>Test 2</test>
+	<test>
+		Test 3
+	</test>
+</root>
