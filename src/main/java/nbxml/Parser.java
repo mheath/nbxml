@@ -35,7 +35,17 @@ import java.util.Map;
 public class Parser {
 
 	private enum State {
-		START, IN_ELEMENT, IN_ATTRIBUTES, IN_ATTRIBUTE_NAME, IN_ATTRIBUTE_VALUE, IN_ATTRIBUTE_VALUE_SINGLE_QUOTE, IN_ATTRIBUTE_VALUE_DOUBLE_QUOTE, IN_TEXT, IN_EMPTY_ELEMENT, CLOSED
+		START,
+		IN_ELEMENT,
+		IN_ATTRIBUTES,
+		IN_ATTRIBUTE_NAME,
+		IN_ATTRIBUTE_VALUE,
+		IN_ATTRIBUTE_VALUE_SINGLE_QUOTE,
+		IN_ATTRIBUTE_VALUE_DOUBLE_QUOTE,
+		IN_TEXT,
+		IN_EMPTY_ELEMENT,
+		IN_XML_DECLARATION,
+		CLOSED
 	}
 
 	// TODO Implement a locator
@@ -48,6 +58,12 @@ public class Parser {
 	private boolean emptyElement;
 	private String attributeName;
 	private AttributesImpl attributes;
+
+	/**
+	 * This flag indicates if we've processed an element or not.  If we have not processed an element, we need to
+	 * ignore any preliminary whitespace.
+	 */
+	private boolean started = false;
 
 	private final List<Element> elementStack = new LinkedList<Element>();
 
@@ -94,15 +110,28 @@ public class Parser {
 					} else {
 						throw new SAXParseException("The markup in the document preceding the root element must be well-formed.", locator);
 					}
+				} else if (c == '?') {
+					if (builder.length() != 0) {
+						throw new SAXParseException("A '?' should follow immediately after a '<'", locator);
+					}
+					state = State.IN_XML_DECLARATION;
 				} else {
 					builder.append(c);
 				}
 				break;
+			case IN_XML_DECLARATION:
+				if (c == '?') {
+					state = Parser.State.IN_EMPTY_ELEMENT;
+				}
+				break;
 			case IN_EMPTY_ELEMENT:
 				if (c != '>') {
-					throw new SAXParseException("Expected a '>' immediately following the '/'", locator);
+					throw new SAXParseException("Expected a '>'", locator);
 				}
-				processElement();
+				// Only process the element if it's not empty (We ignore XML declaration elements (i.e. <?xml version=... ?> elements)
+				if (builder.length() > 0 || (element != null && element.length() > 0)) {
+					processElement();
+				}
 				setStartState();
 				break;
 			case IN_ATTRIBUTES:
@@ -208,6 +237,7 @@ public class Parser {
 	}
 
 	private void processElement() throws SAXException {
+		started = true;
 		if (element.startsWith("/")) {
 			element = element.substring(1).trim();
 			endElement();
@@ -288,7 +318,9 @@ public class Parser {
 	}
 
 	private void text(char[] chars) throws SAXException {
-		contentHandler.characters(chars, 0, chars.length);
+		if (started) {
+			contentHandler.characters(chars, 0, chars.length);
+		}
 	}
 
 	public void close() throws SAXException {
